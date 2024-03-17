@@ -1,6 +1,7 @@
 const express = require('express')
 const logger = require('morgan')
 const fs = require('fs');
+const https = require('https')
 const base64Tools = require("./exports/base64ArrayBuffer.js")
 
 const passport = require('passport')
@@ -251,6 +252,9 @@ app.use(function(err, req, res, next) {
     res.status(500).send('Something broke!')
 })
 
-app.listen(port, () => {
+https.createServer({
+    key: fs.readFileSync('./certs/server.key'),
+    cert: fs.readFileSync('./certs/server.cert')
+}, app).listen(port, () => {
     console.log(`Example app listening at http://localhost:${port}`)
 })
