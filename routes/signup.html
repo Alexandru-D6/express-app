@@ -7,9 +7,9 @@
 </head>
 
 <body>
-    <p><strong>Want to access your personal web page?</strong></p>
-    <p>Please login to proceed</p>
-    <form action="/login" method="post">  <!-- when the formulary is submitted, it will be POSTed to /login-->
+    <p><strong>Don't you have an account already?</strong></p>
+    <p>Please sign in to proceed</p>
+    <form action="/signup" method="post">  <!-- when the formulary is submitted, it will be POSTed to /login-->
         <div>
             <label>Username:</label>
             <input type="text" name="username" />  <!-- the name MUST match the one defined in the local 'username-password' strategy -->
@@ -19,10 +19,7 @@
             <input type="password" name="password" /> <!-- the name MUST match the one defined in the local 'username-password' strategy -->
         </div>
         <div>
-            <input type="submit" value="Log In" />
-        </div>
-        <div>
-            <a href="/signup">Don't you have an account already?</a>
+            <input type="submit" value="Sign up" />
         </div>
     </form>
 </body>
