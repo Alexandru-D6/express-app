@@ -98,7 +98,7 @@ The local strategy requires a `verify` function which receives the credentials
 that the username and password are correct and then invoke `done` with a user
 object, which will be set at `req.user` in route handlers after authentication.
 */
-passport.use('username-password', new LocalStrategy(
+passport.use('login-username-password', new LocalStrategy(
     {
         usernameField: 'username',  // it MUST match the name of the input field for the username in the login HTML formulary
         passwordField: 'password',  // it MUST match the name of the input field for the password in the login HTML formulary
@@ -124,7 +124,7 @@ passport.use('username-password', new LocalStrategy(
     }
 ))
 
-passport.use('signup-user', new LocalStrategy(
+passport.use('signup-username-password', new LocalStrategy(
     {
         usernameField: 'username',  // it MUST match the name of the input field for the username in the login HTML formulary
         passwordField: 'password',  // it MUST match the name of the input field for the password in the login HTML formulary
@@ -155,7 +155,7 @@ passport.use('jwtCookie', new JwtStrategy(
         secretOrKey: jwtSecret
     },
     function (jwtPayload, done) {
-        if (jwtPayload.sub && jwtPayload.sub === 'walrus') {
+        if (jwtPayload.sub) {
             const user = {
                 username: jwtPayload.sub,
                 description: 'one of the users that deserve to get to this server',
@@ -166,6 +166,20 @@ passport.use('jwtCookie', new JwtStrategy(
         return done(null, false)
     }
 ))
+
+function generateToken(user) {
+    // This is what ends up in our JWT
+    const jwtClaims = {
+        sub: user.username,
+        iss: 'localhost:3000',
+        aud: 'localhost:3000',
+        exp: Math.floor(Date.now() / 1000) + 604800, // 1 week (7×24×60×60=604800s) from now
+        role: 'user' // just to show a private JWT field
+    }
+
+    // generate a signed json web token. By default the signing algorithm is HS256 (HMAC-SHA256), i.e. we will 'sign' with a symmetric secret
+    return jwt.sign(jwtClaims, jwtSecret)
+}
 
 app.use(express.urlencoded({ extended: true })) // needed to retrieve html form fields (it's a requirement of the local strategy)
 app.use(passport.initialize())  // we load the passport auth middleware to our express application. It should be loaded before any route.
@@ -187,19 +201,9 @@ app.get('/login', (req, res) => {
 })
 
 app.post('/login',
-  passport.authenticate('username-password', { session: false, failureRedirect: '/login' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
+  passport.authenticate('login-username-password', { session: false, failureRedirect: '/login' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
   (req, res) => {
-    // This is what ends up in our JWT
-    const jwtClaims = {
-        sub: req.user.username,
-        iss: 'localhost:3000',
-        aud: 'localhost:3000',
-        exp: Math.floor(Date.now() / 1000) + 604800, // 1 week (7×24×60×60=604800s) from now
-        role: 'user' // just to show a private JWT field
-    }
-
-    // generate a signed json web token. By default the signing algorithm is HS256 (HMAC-SHA256), i.e. we will 'sign' with a symmetric secret
-    const token = jwt.sign(jwtClaims, jwtSecret)
+    const token = generateToken(req.user)
 
     res.cookie('jwt', token, { httpOnly: true, secure: true }) // Write the token to a cookie with name 'jwt' and enable the flags httpOnly and secure.
     res.redirect('/')
@@ -215,19 +219,9 @@ app.get('/signup', (req, res) => {
 })
 
 app.post('/signup',
-  passport.authenticate('signup-user', { session: false, failureRedirect: '/signup' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
+  passport.authenticate('signup-username-password', { session: false, failureRedirect: '/signup' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
   (req, res) => {
-    // This is what ends up in our JWT
-    const jwtClaims = {
-        sub: req.user.username,
-        iss: 'localhost:3000',
-        aud: 'localhost:3000',
-        exp: Math.floor(Date.now() / 1000) + 604800, // 1 week (7×24×60×60=604800s) from now
-        role: 'user' // just to show a private JWT field
-    }
-
-    // generate a signed json web token. By default the signing algorithm is HS256 (HMAC-SHA256), i.e. we will 'sign' with a symmetric secret
-    const token = jwt.sign(jwtClaims, jwtSecret)
+    const token = generateToken(req.user)
 
     res.cookie('jwt', token, { httpOnly: true, secure: true }) // Write the token to a cookie with name 'jwt' and enable the flags httpOnly and secure.
     res.redirect('/')
