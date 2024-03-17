@@ -1,0 +1,24 @@
+{
+    "server": {
+        "host": "localhost",
+        "port": 3000
+    },
+    "scrypt": {
+        "FastParams": {
+            "N": 262144,
+            "r": 8,
+            "p": 1
+        },
+        "SlowParams": {
+            "N": 2097152,
+            "r": 8,
+            "p": 1
+        },
+        "derivedKeyLength": 32
+    },
+    "github": {
+        "clientID": "YOUR_CLIENT",
+        "clientSecret": "YOUR_SECRET",
+        "callbackURL": "https://localhost:3000/auth/github/callback"
+    }
+}
