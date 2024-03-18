@@ -5,6 +5,7 @@ const logger = require('morgan')
 const fs = require('fs');
 const https = require('https')
 const config = require('config')
+const sqlite3 = require('better-sqlite3')
 
 const passport = require('passport')
 const LocalStrategy = require('passport-local').Strategy
@@ -41,6 +42,11 @@ app.use(logger('dev'))
 // DATABASE //
 //////////////
 
+// delete credentials.db if it exists
+fs.writeFileSync('database/credentials.db', '')
+const db = new sqlite3('database/credentials.db', {"fileMustExist": false})
+db.prepare('CREATE TABLE credentials (username TEXT PRIMARY KEY, password TEXT NOT NULL)').run()
+
 function createDatabase() {
     fs.writeFileSync('database/credentials.json', '[]')
 }
@@ -62,6 +68,17 @@ function existsUser(username) {
     return res
 }
 
+async function existsUserDB(username) {
+    exists = false
+    user = db.prepare('SELECT * FROM credentials WHERE username = ?').all(username)
+
+    if (user[0] !== undefined) {
+        exists = true
+    }
+
+    return exists
+}
+
 function getUser(username) {
     // Read a json file
     credentials = JSON.parse(fs.readFileSync('database/credentials.json', "utf-8"))
@@ -76,6 +93,18 @@ function getUser(username) {
     return res
 }
 
+function getUserDB(username) {
+    user = db.prepare('SELECT * FROM credentials WHERE username = ?').get(username)
+
+    if (user[0] === undefined) {
+        user = null
+    } else {
+        user = user[0]
+    }
+
+    return user
+}
+
 function addUser(username, password) {
     // Read a json file
     credentials = JSON.parse(fs.readFileSync('database/credentials.json', "utf-8"))
@@ -86,6 +115,10 @@ function addUser(username, password) {
     })
 
     fs.writeFileSync('database/credentials.json', JSON.stringify(credentials))
+}
+
+function addUserDB(username, password) {
+    db.prepare('INSERT INTO credentials (username, password) VALUES (?, ?)').run(username, password)
 }
 
 ////////////////////
@@ -107,7 +140,7 @@ passport.use('login-username-password',
             session: false // we will store a JWT in the cookie with all the required session data. Our server does not need to keep a session, it's going to be stateless
         },
         async function (username, password, done) {
-            user = getUser(username)
+            user = getUserDB(username)
             if (user === null) {
                 return done(null, false)
             }
@@ -135,13 +168,13 @@ passport.use('signup-username-password',
             session: false // we will store a JWT in the cookie with all the required session data. Our server does not need to keep a session, it's going to be stateless
         },
         async function (username, password, done) {
-            if(existsUser(username)) {
+            if(existsUserDB(username) === true) {
                 return done(null, false)
             }
 
             const hash = await scryptPbkdf.scrypt(password, salt, derivedKeyLength, scryptParams)
             const hashString = base64Tools.base64ArrayBuffer(hash)
-            addUser(username, hashString, 'fast')
+            addUserDB(username, hashString)
             const user = {
                 username: username,
                 description: 'the "only" user that deserves to get to this server'
@@ -162,8 +195,8 @@ passport.use('github-oauth',
             if (!profile.username) {
                 return done(null, false)
             }
-            if (!existsUser(profile.username)) {
-                addUser(profile.username, accessToken)
+            if (!existsUserDB(profile.username)) {
+                addUserDB(profile.username, accessToken)
             }
             return done(null, profile)
         }
