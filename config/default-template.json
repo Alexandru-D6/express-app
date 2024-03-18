@@ -20,5 +20,8 @@
         "clientID": "YOUR_CLIENT",
         "clientSecret": "YOUR_SECRET",
         "callbackURL": "https://localhost:3000/auth/github/callback"
+    },
+    "jwt": {
+        "secret": "YOUR_SECRET"
     }
 }

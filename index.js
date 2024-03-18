@@ -1,27 +1,24 @@
-const base64Tools = require("./exports/base64ArrayBuffer.js")
-
 const express = require('express')
 const logger = require('morgan')
 const fs = require('fs');
 const https = require('https')
 const config = require('config')
 const sqlite3 = require('better-sqlite3')
+const cookieParser = require('cookie-parser')
+const base64 = require('base64-arraybuffer')
 
 const passport = require('passport')
 const LocalStrategy = require('passport-local').Strategy
 const JwtStrategy  = require('passport-jwt').Strategy
 const GitHubStrategy = require('passport-github2').Strategy
 const jwt = require('jsonwebtoken')
-const jwtSecret = require('crypto').randomBytes(16) // 16*8=256 random bits
-
-const cookieParser = require('cookie-parser')
+const jwtSecret = Buffer.from(config.get('jwt.secret'), 'base64')
 
 ///////////////////
 // SCRYPT CONFIG //
 ///////////////////
 const scryptPbkdf = require('scrypt-pbkdf')
 const derivedKeyLength = config.get('scrypt.derivedKeyLength')
-const salt = scryptPbkdf.salt(derivedKeyLength)
 const scryptParams = config.get('scrypt.FastParams')
 
 //////////////////
@@ -42,17 +39,18 @@ app.use(logger('dev'))
 // DATABASE //
 //////////////
 
-// delete credentials.db if it exists
-fs.writeFileSync('database/credentials.db', '')
-const db = new sqlite3('database/credentials.db', {"fileMustExist": false})
-db.prepare('CREATE TABLE credentials (username TEXT PRIMARY KEY, password TEXT NOT NULL)').run()
-
 function createDatabase() {
+    // File database
     fs.writeFileSync('database/credentials.json', '[]')
+
+    // SQLite database
+    fs.writeFileSync('database/credentials.db', '')
+    const db = new sqlite3('database/credentials.db', { "fileMustExist": false })
+    db.prepare('CREATE TABLE credentials (username TEXT PRIMARY KEY, password TEXT NOT NULL, salt TEXT NOT NULL)').run()
 }
 
 // Reset the database
-createDatabase()
+// createDatabase()
 
 function existsUser(username) {
     // Read a json file
@@ -66,17 +64,6 @@ function existsUser(username) {
     })
 
     return res
-}
-
-async function existsUserDB(username) {
-    exists = false
-    user = db.prepare('SELECT * FROM credentials WHERE username = ?').all(username)
-
-    if (user[0] !== undefined) {
-        exists = true
-    }
-
-    return exists
 }
 
 function getUser(username) {
@@ -93,32 +80,61 @@ function getUser(username) {
     return res
 }
 
-function getUserDB(username) {
-    user = db.prepare('SELECT * FROM credentials WHERE username = ?').get(username)
-
-    if (user[0] === undefined) {
-        user = null
-    } else {
-        user = user[0]
-    }
-
-    return user
-}
-
-function addUser(username, password) {
+function addUser(username, password, salt) {
     // Read a json file
     credentials = JSON.parse(fs.readFileSync('database/credentials.json', "utf-8"))
 
     credentials.push({
         "username": username,
         "password": password,
+        "salt": salt
     })
 
     fs.writeFileSync('database/credentials.json', JSON.stringify(credentials))
 }
 
-function addUserDB(username, password) {
-    db.prepare('INSERT INTO credentials (username, password) VALUES (?, ?)').run(username, password)
+const db = new sqlite3('database/credentials.db', { "fileMustExist": true })
+
+async function existsUserDB(username) {
+    exists = false
+    user = null
+
+    try {
+        user = await db.prepare('SELECT * FROM credentials WHERE username = ?').get(username)
+    } catch (error) {
+        console.error(error)
+    }
+
+    if (user !== undefined) {
+        exists = true
+    }
+
+    return exists
+}
+
+async function getUserDB(username) {
+    user = null
+
+    try {
+        user = await db.prepare('SELECT * FROM credentials WHERE username = ?').get(username)
+    } catch (error) {
+        console.error(error)
+    }
+
+    if (user === undefined) {
+        user = null
+    }
+
+    return user
+}
+
+async function addUserDB(username, password, salt) {
+    try {
+        await db.prepare('INSERT INTO credentials (username, password, salt) VALUES (?, ?, ?)').run(username, password, salt)
+    } catch (error) {
+        console.error(error)
+        throw error
+    }
 }
 
 ////////////////////
@@ -140,18 +156,20 @@ passport.use('login-username-password',
             session: false // we will store a JWT in the cookie with all the required session data. Our server does not need to keep a session, it's going to be stateless
         },
         async function (username, password, done) {
-            user = getUserDB(username)
+            user = await getUserDB(username)
             if (user === null) {
                 return done(null, false)
             }
 
-            const hash = await scryptPbkdf.scrypt(password, salt, derivedKeyLength, scryptParams)
-            const hashString = base64Tools.base64ArrayBuffer(hash)
+            const hash = await scryptPbkdf.scrypt(password, user.salt, derivedKeyLength, scryptParams)
+            const hashString = base64.encode(hash)
+
             if (user.password === hashString) {
                 const user = {
                     username: username,
                     description: 'the "only" user that deserves to get to this server'
                 }
+
                 return done(null, user) // the first argument for done is the error, if any. In our case there is no error, and so we pass null. The object user will be added by the passport middleware to req.user and thus will be available there for the next middleware and/or the route handler
             }
 
@@ -168,18 +186,27 @@ passport.use('signup-username-password',
             session: false // we will store a JWT in the cookie with all the required session data. Our server does not need to keep a session, it's going to be stateless
         },
         async function (username, password, done) {
-            if(existsUserDB(username) === true) {
+            userExists = await existsUserDB(username)
+            if(userExists) {
                 return done(null, false)
             }
 
+            const salt = base64.encode(scryptPbkdf.salt(derivedKeyLength))
             const hash = await scryptPbkdf.scrypt(password, salt, derivedKeyLength, scryptParams)
-            const hashString = base64Tools.base64ArrayBuffer(hash)
-            addUserDB(username, hashString)
-            const user = {
-                username: username,
-                description: 'the "only" user that deserves to get to this server'
+            const hashString = base64.encode(hash)
+
+            try {
+                await addUserDB(username, hashString, salt)
+
+                const user = {
+                    username: username,
+                    description: 'the "only" user that deserves to get to this server'
+                }
+
+                return done(null, user)
+            } catch (error) {
+                return done(null, false)
             }
-            return done(null, user)
         }
     )
 )
@@ -191,13 +218,20 @@ passport.use('github-oauth',
             clientSecret: GITHUB_CLIENT_SECRET,
             callbackURL: GITHUB_CALLBACK_URL
         },
-        function(accessToken, refreshToken, profile, done) {
+        async function(accessToken, refreshToken, profile, done) {
             if (!profile.username) {
                 return done(null, false)
             }
-            if (!existsUserDB(profile.username)) {
-                addUserDB(profile.username, accessToken)
+
+            userExists = await existsUserDB(profile.username)
+            if (!userExists) {
+                try {
+                    await addUserDB(profile.username, accessToken, "github-token")
+                } catch (error) {
+                    return done(null, false)
+                }
             }
+
             return done(null, profile)
         }
     )
