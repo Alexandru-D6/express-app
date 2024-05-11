@@ -21,6 +21,12 @@
         "clientSecret": "YOUR_SECRET",
         "callbackURL": "https://localhost:3000/auth/github/callback"
     },
+    "oidc": {
+        "clientID": "YOUR_CLIENT",
+        "clientSecret": "YOUR_SECRET",
+        "provider": "https://accounts.google.com",
+        "callbackURL": "https://localhost:3000/auth/oidc/callback"
+    },
     "jwt": {
         "secret": "YOUR_SECRET"
     }
