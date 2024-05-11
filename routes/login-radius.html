@@ -7,9 +7,9 @@
 </head>
 
 <body>
-    <p><strong>Want to access your personal web page?</strong></p>
+    <p><strong>Want to access your personal web page with Radius?</strong></p>
     <p>Please login to proceed</p>
-    <form action="/login" method="post">  <!-- when the formulary is submitted, it will be POSTed to /login-->
+    <form action="/login-radius" method="post">  <!-- when the formulary is submitted, it will be POSTed to /login-->
         <div>
             <label>Username:</label>
             <input type="text" name="username" />  <!-- the name MUST match the one defined in the local 'username-password' strategy -->
@@ -25,7 +25,7 @@
             <a href="/signup">Don't you have an account already?</a>
         </div>
         <div>
-            <a href="/login-radius">Sign in with Radius</a>
+            <a href="/login">Sign in with credentials</a>
         </div>
         <div>
             <a href='/auth/github/login'>Sign in With GitHub</a>

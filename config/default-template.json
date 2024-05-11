@@ -27,6 +27,10 @@
         "provider": "https://accounts.google.com",
         "callbackURL": "https://localhost:3000/auth/oidc/callback"
     },
+    "radius": {
+        "host": "127.0.0.1",
+        "secret": "RADIUS_SECRET"
+    },
     "jwt": {
         "secret": "YOUR_SECRET"
     }

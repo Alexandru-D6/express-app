@@ -13,7 +13,17 @@ const LocalStrategy = require('passport-local').Strategy
 const JwtStrategy  = require('passport-jwt').Strategy
 const GitHubStrategy = require('passport-github2').Strategy
 const OpenIDConnectStrategy = require('openid-client').Strategy
+const CustomStrategy = require('passport-custom').Strategy
 const Issuer = require('openid-client').Issuer
+const RadiusClient = require('node-radius-client');
+const {
+    dictionaries: {
+      rfc2865: {
+        file,
+        attributes,
+      },
+    },
+  } = require('node-radius-utils');
 const jwt = require('jsonwebtoken')
 const jwtSecret = Buffer.from(config.get('jwt.secret'), 'base64')
 
@@ -41,6 +51,12 @@ const OIDC_CALLBACK_URL = config.get('oidc.callbackURL')
 
 const host = config.get('server.host')
 const port = config.get('server.port')
+
+/////////////////////
+// RADIUS STRATEGY //
+/////////////////////
+const RADIUS_HOST = config.get('radius.host')
+const RADIUS_SECRET = config.get('radius.secret')
 
 //////////////
 // DATABASE //
@@ -300,6 +316,40 @@ async function main () {
         )
     )
 
+    passport.use('radius',
+        new CustomStrategy(
+            async function (req, done) {
+                const username = req.body.username
+                const password = req.body.password
+
+                const radiusClient = new RadiusClient({host: RADIUS_HOST})
+
+                try {
+                    const response = await radiusClient.accessRequest({
+                        secret: RADIUS_SECRET,
+                        attributes: [
+                          [attributes.USER_NAME, username + "@upc.edu"],
+                          [attributes.USER_PASSWORD, password],
+                        ],
+                      })
+
+                    if (response.code === 'Access-Accept') {
+                        const user = {
+                            username: username,
+                            description: 'the "only" user that deserves to get to this server'
+                        }
+
+                        return done(null, user)
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+
+                return done(null, false)
+            }
+        )
+    )
+
     passport.use('jwtCookie',
         new JwtStrategy(
             {
@@ -350,6 +400,26 @@ async function main () {
 
     app.post('/login',
         passport.authenticate('login-username-password', { session: false, failureRedirect: '/login' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
+        (req, res) => {
+            const token = generateToken(req.user.username)
+
+            res.cookie('jwt', token, { httpOnly: true, secure: true }) // Write the token to a cookie with name 'jwt' and enable the flags httpOnly and secure.
+            res.redirect('/')
+
+            // And let us log a link to the jwt.io debugger for easy checking/verifying:
+            console.log(`Token sent. Debug at https://jwt.io/?value=${token}`)
+            console.log(`Token secret (for verifying the signature): ${jwtSecret.toString('base64')}`)
+        }
+    )
+
+    app.get('/login-radius',
+        (req, res) => {
+            res.sendFile('routes/login-radius.html', { root: __dirname })
+        }
+    )
+
+    app.post('/login-radius',
+        passport.authenticate('radius', { session: false, failureRedirect: '/login-radius' }), // we indicate that this endpoint must pass through our 'username-password' passport strategy, which we defined before
         (req, res) => {
             const token = generateToken(req.user.username)
 
